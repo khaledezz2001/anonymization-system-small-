@@ -16,7 +16,6 @@ MODEL_PATH = "/app/models/Qwen3-8B"
 # function is called.  Declared here so linters don't complain.
 tokenizer = None
 llm = None
-SAMPLING_PARAMS = None
 
 
 # ===============================
@@ -94,7 +93,117 @@ def pages_to_chunks(pages, max_tokens=1500):
 MAX_CHUNKS = 120   # safety limit for very large documents
 
 
-SYSTEM_PROMPT = """You are a multilingual named entity recognition (NER) assistant for legal and business documents.
+# ===============================
+# STAGE-SPECIFIC SYSTEM PROMPTS
+# ===============================
+STAGE1_SYSTEM_PROMPT = """You are a multilingual named entity recognition (NER) assistant for legal and business documents.
+You MUST extract entities in ALL languages and scripts, including but not limited to: English, Russian (Cyrillic), Greek, Arabic, French, German, Turkish, and any other language present.
+
+Extract the following from the text:
+
+1. PERSONS — actual human names ONLY
+   ✓ EXTRACT: "John Smith", "Andreas Menelaou", "Борис Грановский", "Γεώργιος Τσιφραρίδης", "В.А. Король"
+   ✗ NEVER extract role titles or descriptions as persons. These are NOT persons:
+     - "Chairman", "Director", "Secretary", "Landlord", "Tenant", "Auditor"
+     - "the auditor for the time being of the Company"
+     - "the Chairman of the Board"
+     - Any phrase starting with "the " followed by a role — this is a description, NOT a name
+   - Extract person names in ALL scripts and languages
+   - Extract names EXACTLY as they appear in the text, preserving the EXACT grammatical form/case
+     In Russian: if text says "Иванова Ивана Ивановича" (genitive), extract that exact form
+   - Extract person names from witnesses, signatories, advocates, directors, shareholders
+   - If a person's name is used as a business/firm name, extract it as BOTH a person AND an organisation
+   - Extract ALL variants/transliterations of the same person
+
+2. ORGANISATIONS — actual registered business entity names ONLY
+   ✓ EXTRACT: "Altus Citadel Corporate Services Limited", "ООО Ромашка"
+   ✗ NEVER extract these as organisations:
+     - Generic terms: "the Company", "Company", "Board of Directors", "the Board"
+     - Government bodies: "European Commission", "FATF", "MOKAS", "United Nations"
+     - Regulations: "Directive (EU) 2018/843", "GDPR", "EBA Guidelines"
+     - Countries/areas: "BVI", "European Economic Area"
+     - Indices/reports: "Basel AML Index"
+
+Output ONLY valid JSON with no explanation. Do not wrap in markdown code blocks.
+
+{
+  "persons": ["name1", "name2"],
+  "organizations": ["org1", "org2"]
+}"""
+
+
+STAGE2_SYSTEM_PROMPT = """You are a multilingual named entity recognition (NER) assistant for legal and business documents.
+You MUST extract entities in ALL languages and scripts, including but not limited to: English, Russian (Cyrillic), Greek, Arabic, French, German, Turkish, and any other language present.
+
+Extract the following from the text:
+
+1. DATES — specific calendar dates ONLY (must reference a specific day)
+   ✓ EXTRACT: "01/09/2015", "24th of July, 2015", "1 January 2020"
+   ✗ NEVER extract these as dates:
+     - Time durations: "fourteen days", "six months", "ten days", "twenty-one days", "3 months", "1 year", "two weeks"
+     - Bare years: "2014" alone is NOT a date
+     - Quarter references: "Q2 2024"
+     - Section/article numbers: "2.2.11", "3.1.5"
+   A date MUST contain at least a day+month OR a full date format (DD/MM/YYYY). Durations like "X days/months/years" are NEVER dates.
+
+2. ADDRESSES — physical street/postal addresses in any language
+   ✓ EXTRACT: "Mome Kapora 12, apartment 11, 1100 Belgrade", "191 ATHALASSIS AVE."
+   ✗ NEVER extract these as addresses:
+     - Page numbers or section headers: "4 INTRODUCTION"
+     - Duration phrases: "1 year for high risk customers"
+     - Counts: "2 clients onboarded"
+     - Legal references: "8 and Chapter VI of Directive"
+   - Extract the FULL address as a SINGLE string (street + number + apartment + postal code + city + country)
+   - If an address spans multiple lines, combine ALL lines into one address string
+   - Addresses can be in ANY format and ANY language
+   - Even PARTIAL addresses are PII: "Eleftherias 5" alone is an address
+   - When in doubt about whether something is an address, extract it
+
+Output ONLY valid JSON with no explanation. Do not wrap in markdown code blocks.
+
+{
+  "dates": ["date1", "date2"],
+  "addresses": ["addr1", "addr2"]
+}"""
+
+
+STAGE3_SYSTEM_PROMPT = """You are a multilingual named entity recognition (NER) assistant for legal and business documents.
+You MUST extract entities in ALL languages and scripts, including but not limited to: English, Russian (Cyrillic), Greek, Arabic, French, German, Turkish, and any other language present.
+
+Extract the following from the text:
+
+1. PHONES — phone and fax numbers
+   ✓ EXTRACT: "+357 22 315161", "22314641"
+   ✗ NEVER extract bank account numbers, IBAN codes, or registration/tax numbers (ИНН, ОГРН, КПП) as phones
+
+2. REGISTRATION IDS — company registration numbers, tax IDs
+   ✓ EXTRACT: "H.E.107777", "HE317807", "Company No. 12345678"
+
+3. BANK ACCOUNTS — IBAN numbers, bank account numbers, SWIFT/BIC codes
+   ✓ EXTRACT: "CY17 0020 0128 0000 0012 0052 7600", "BCYPCY2N"
+
+4. EMAILS — email addresses ONLY (MUST contain an @ symbol)
+   ✓ EXTRACT: "john@example.com", "info@company.com"
+   ✗ NEVER extract the bare word "email" or "Email" — only extract actual email addresses with @ symbol
+   ✗ NEVER extract URLs or domain names: "www.example.com" is NOT an email
+
+5. PASSPORTS — passport numbers, national ID numbers, travel document numbers
+   ✓ EXTRACT: "N1234567", "C12345678"
+   ✗ NEVER extract section/article numbers as passport numbers
+
+Output ONLY valid JSON with no explanation. Do not wrap in markdown code blocks.
+
+{
+  "phones": ["phone1", "phone2"],
+  "registration_ids": ["H.E.107777"],
+  "bank_accounts": ["CY17 0020 0128 0000 0012 0052 7600"],
+  "emails": ["email1@example.com"],
+  "passports": ["N1234567"]
+}"""
+
+
+# Legacy single-pass prompt (used when custom system_prompt is provided)
+LEGACY_SYSTEM_PROMPT = """You are a multilingual named entity recognition (NER) assistant for legal and business documents.
 You MUST extract entities in ALL languages and scripts, including but not limited to: English, Russian (Cyrillic), Greek, Arabic, French, German, Turkish, and any other language present.
 
 Extract ALL of the following from the text:
@@ -178,6 +287,29 @@ Output ONLY valid JSON with no explanation. Do not wrap in markdown code blocks.
 }"""
 
 
+# Pipeline stage definitions: (system_prompt, default_user_prompt, expected_keys, max_tokens)
+PIPELINE_STAGES = [
+    (
+        STAGE1_SYSTEM_PROMPT,
+        "Extract all person names and organization names from the following text:",
+        ["persons", "organizations"],
+        2048,
+    ),
+    (
+        STAGE2_SYSTEM_PROMPT,
+        "Extract all dates and physical addresses from the following text:",
+        ["dates", "addresses"],
+        2048,
+    ),
+    (
+        STAGE3_SYSTEM_PROMPT,
+        "Extract all phone numbers, company registration numbers, bank account numbers, email addresses, and passport numbers from the following text:",
+        ["phones", "registration_ids", "bank_accounts", "emails", "passports"],
+        2048,
+    ),
+]
+
+
 def strip_thinking(text):
     """Remove <think>...</think> blocks from model output (safety net)."""
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
@@ -185,40 +317,52 @@ def strip_thinking(text):
     return text.strip()
 
 
-def extract_entities_batch(chunks, system_prompt=None, user_prompt=None):
-    """Extract entities from all chunks using vLLM batch inference.
+def _run_extraction_stage(chunks, system_prompt, default_user_prompt, entity_keys,
+                          max_tokens, user_prompt_override=None):
+    """Run a single extraction stage on all chunks.
 
-    Processes chunks in micro-batches of BATCH_SIZE to avoid GPU KV-cache
-    OOM when there are many chunks from large documents.
+    Args:
+        chunks: List of text chunks to process.
+        system_prompt: The stage-specific system prompt.
+        default_user_prompt: Default user prompt for this stage.
+        entity_keys: List of JSON keys expected in the output (e.g. ["persons", "organizations"]).
+        max_tokens: Max tokens for generation in this stage.
+        user_prompt_override: Optional user-provided prompt override.
+
+    Returns:
+        dict mapping each entity_key to a list of extracted values,
+        plus a "custom" key for any unexpected keys.
     """
-    BATCH_SIZE = 24  # 8B model has ~3.4× smaller KV cache — fit more sequences
+    BATCH_SIZE = 24
 
-    effective_prompt = system_prompt if system_prompt else SYSTEM_PROMPT
-    default_user_prompt = "Extract all entities specified in the system prompt (persons, organizations, dates, addresses, phones, registration IDs, bank accounts, emails, passports):"
+    stage_sampling = SamplingParams(
+        temperature=0,
+        max_tokens=max_tokens,
+        repetition_penalty=1.1,
+    )
 
-    all_persons, all_orgs, all_dates = [], [], []
-    all_addresses, all_phones, all_reg_ids, all_bank_accounts, all_emails, all_passports = [], [], [], [], [], []
-    custom_entities = []
+    results = {key: [] for key in entity_keys}
+    results["custom"] = []
 
     total_chunks = len(chunks)
     for batch_start in range(0, total_chunks, BATCH_SIZE):
         batch_end = min(batch_start + BATCH_SIZE, total_chunks)
         batch_chunks = chunks[batch_start:batch_end]
 
-        print(f"[LOG] Processing chunks {batch_start + 1}-{batch_end} of {total_chunks}", flush=True)
+        print(f"[LOG]   Chunks {batch_start + 1}-{batch_end} of {total_chunks}", flush=True)
 
         prompts = []
         for chunk in batch_chunks:
-            if user_prompt and isinstance(user_prompt, str) and user_prompt.strip():
-                if "{chunk}" in user_prompt:
-                    user_content = user_prompt.replace("{chunk}", chunk)
+            if user_prompt_override and isinstance(user_prompt_override, str) and user_prompt_override.strip():
+                if "{chunk}" in user_prompt_override:
+                    user_content = user_prompt_override.replace("{chunk}", chunk)
                 else:
-                    user_content = f"{user_prompt.strip()}\n\n{chunk}"
+                    user_content = f"{user_prompt_override.strip()}\n\n{chunk}"
             else:
                 user_content = f"{default_user_prompt}\n\n{chunk}"
 
             messages = [
-                {"role": "system", "content": effective_prompt},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content}
             ]
             prompt = tokenizer.apply_chat_template(
@@ -226,39 +370,97 @@ def extract_entities_batch(chunks, system_prompt=None, user_prompt=None):
             )
             prompts.append(prompt)
 
-        outputs = llm.generate(prompts, SAMPLING_PARAMS)
+        outputs = llm.generate(prompts, stage_sampling)
 
         for output in outputs:
             raw = output.outputs[0].text.strip()
             cleaned = strip_thinking(raw)
 
             try:
-                json_match = re.search(r'\{[^{}]*"persons"\s*:.*\}', cleaned, re.DOTALL)
+                # Try to find a JSON object with any of the expected keys
+                first_key = entity_keys[0]
+                json_match = re.search(
+                    r'\{[^{}]*"' + re.escape(first_key) + r'"\s*:.*\}', cleaned, re.DOTALL
+                )
                 if not json_match:
                     json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
                 result = json.loads(json_match.group()) if json_match else json.loads(cleaned)
 
-                all_persons.extend([p.strip() for p in result.get("persons", []) if p and isinstance(p, str) and p.strip()])
-                all_orgs.extend([o.strip() for o in result.get("organizations", []) if o and isinstance(o, str) and o.strip()])
-                all_dates.extend([d.strip() for d in result.get("dates", []) if d and isinstance(d, str) and d.strip()])
-                all_addresses.extend([a.strip() for a in result.get("addresses", []) if a and isinstance(a, str) and a.strip()])
-                all_phones.extend([p.strip() for p in result.get("phones", []) if p and isinstance(p, str) and p.strip()])
-                all_reg_ids.extend([r.strip() for r in result.get("registration_ids", []) if r and isinstance(r, str) and r.strip()])
-                all_bank_accounts.extend([b.strip() for b in result.get("bank_accounts", []) if b and isinstance(b, str) and b.strip()])
-                all_emails.extend([e.strip() for e in result.get("emails", []) if e and isinstance(e, str) and e.strip()])
+                for key in entity_keys:
+                    values = result.get(key, [])
+                    # Handle passports alternate key
+                    if key == "passports" and not values:
+                        values = result.get("passport_numbers", [])
+                    if isinstance(values, list):
+                        results[key].extend(
+                            [v.strip() for v in values if v and isinstance(v, str) and v.strip()]
+                        )
 
-                passports = result.get("passports", []) or result.get("passport_numbers", [])
-                if isinstance(passports, list):
-                    all_passports.extend([p.strip() for p in passports if p and isinstance(p, str) and p.strip()])
-
-                # Support any custom entity list keys if provided by a custom system prompt
-                standard_keys = {"persons", "organizations", "dates", "addresses", "phones", "registration_ids", "bank_accounts", "emails", "passports", "passport_numbers"}
+                # Collect any custom/unexpected keys
+                expected_keys_set = set(entity_keys) | {"passport_numbers"}
                 for k, v in result.items():
-                    if k not in standard_keys and isinstance(v, list):
-                        custom_entities.extend([item.strip() for item in v if item and isinstance(item, str) and item.strip()])
+                    if k not in expected_keys_set and isinstance(v, list):
+                        results["custom"].extend(
+                            [item.strip() for item in v if item and isinstance(item, str) and item.strip()]
+                        )
             except (json.JSONDecodeError, AttributeError) as e:
                 print(f"[WARN] Failed to parse chunk output: {e}", flush=True)
                 print(f"[WARN] Raw output was: {raw[:500]}", flush=True)
+
+    return results
+
+
+def extract_entities_batch(chunks, system_prompt=None, user_prompt=None):
+    """Extract entities from all chunks using a multi-stage pipeline.
+
+    When no custom system_prompt is provided, runs 3 focused stages:
+      Stage 1: Persons & Organizations
+      Stage 2: Dates & Addresses
+      Stage 3: Phones, Registration IDs, Bank Accounts, Emails, Passports
+
+    When a custom system_prompt is provided, falls back to single-pass
+    extraction for backward compatibility.
+    """
+    if system_prompt:
+        # ---- LEGACY SINGLE-PASS MODE (custom prompt) ----
+        print("[LOG] Custom system prompt detected — using single-pass extraction", flush=True)
+        all_keys = ["persons", "organizations", "dates", "addresses",
+                     "phones", "registration_ids", "bank_accounts", "emails", "passports"]
+        stage_results = _run_extraction_stage(
+            chunks, system_prompt,
+            default_user_prompt="Extract all entities specified in the system prompt:",
+            entity_keys=all_keys,
+            max_tokens=4096,
+            user_prompt_override=user_prompt,
+        )
+    else:
+        # ---- MULTI-STAGE PIPELINE ----
+        stage_results = {}
+        all_custom = []
+        for stage_idx, (stage_prompt, stage_user_prompt, stage_keys, stage_max_tokens) in enumerate(PIPELINE_STAGES, 1):
+            print(f"[LOG] === Stage {stage_idx}/3: extracting {', '.join(stage_keys)} ===", flush=True)
+            result = _run_extraction_stage(
+                chunks, stage_prompt,
+                default_user_prompt=stage_user_prompt,
+                entity_keys=stage_keys,
+                max_tokens=stage_max_tokens,
+                user_prompt_override=user_prompt,
+            )
+            # Accumulate custom entities before update() overwrites the key
+            all_custom.extend(result.pop("custom", []))
+            stage_results.update(result)
+        stage_results["custom"] = all_custom
+
+    all_persons = stage_results.get("persons", [])
+    all_orgs = stage_results.get("organizations", [])
+    all_dates = stage_results.get("dates", [])
+    all_addresses = stage_results.get("addresses", [])
+    all_phones = stage_results.get("phones", [])
+    all_reg_ids = stage_results.get("registration_ids", [])
+    all_bank_accounts = stage_results.get("bank_accounts", [])
+    all_emails = stage_results.get("emails", [])
+    all_passports = stage_results.get("passports", [])
+    custom_entities = stage_results.get("custom", [])
 
     print(f"[LOG] Entity extraction complete. Found: {len(all_persons)} persons, "
           f"{len(all_orgs)} orgs, {len(all_dates)} dates, {len(all_addresses)} addresses, "
@@ -730,12 +932,6 @@ if __name__ == '__main__':
         tensor_parallel_size=int(os.environ.get("TP_SIZE", "1")),
         gpu_memory_utilization=0.90,
         enable_prefix_caching=True,  # reuse KV cache for the shared system prompt
-    )
-
-    SAMPLING_PARAMS = SamplingParams(
-        temperature=0,          # greedy decoding
-        max_tokens=4096,        # dense docs produce many entities
-        repetition_penalty=1.1,
     )
 
     print(f"[LOG] Qwen3-8B loaded via vLLM (prefix caching ON)", flush=True)
