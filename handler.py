@@ -108,6 +108,8 @@ Extract the following from the text:
      - "the auditor for the time being of the Company"
      - "the Chairman of the Board"
      - Any phrase starting with "the " followed by a role — this is a description, NOT a name
+   ✗ NEVER extract company/business names as persons. If a name ends with Ltd, Limited, LLC, Inc, Corp, GmbH, Co., etc., it is a COMPANY, not a person.
+     - "ALTUS CITADEL MANAGEMENT LTD" is a COMPANY, NOT a person
    - Extract person names in ALL scripts and languages
    - Extract names EXACTLY as they appear in the text, preserving the EXACT grammatical form/case
      In Russian: if text says "Иванова Ивана Ивановича" (genitive), extract that exact form
@@ -124,6 +126,7 @@ Extract the following from the text:
      - Role references: "the Option Holder", "the Option Issuer", "the Seller", "the Buyer", "the Lender"
      - Legal/financial terms: "Call Option", "Put Option", "Exercise Price", "Option Shares", "Option Deed", "Completion", "Affiliates", "Bank account"
      - Document clause definitions: any capitalized term that is DEFINED in the document as a concept (not a company name)
+     - Document names: "Articles", "Articles of Association", "Memorandum", "Call Exercise Notice", "Call and Put Option Deed"
      - Government bodies: "European Commission", "FATF", "MOKAS", "United Nations"
      - Regulations/rules: "Directive (EU) 2018/843", "GDPR", "EBA Guidelines", "LCIA Rules", "ICC Rules"
      - Countries/areas: "BVI", "European Economic Area"
@@ -231,6 +234,8 @@ Extract ALL of the following from the text:
      - "the auditor for the time being of the Company"
      - "the Chairman of the Board"
      - Any phrase starting with "the " followed by a role — this is a description, NOT a name
+   ✗ NEVER extract company/business names as persons. If a name ends with Ltd, Limited, LLC, Inc, Corp, GmbH, Co., etc., it is a COMPANY, not a person.
+     - "ALTUS CITADEL MANAGEMENT LTD" is a COMPANY, NOT a person
    - Extract person names in ALL scripts and languages
    - Extract names EXACTLY as they appear in the text, preserving the EXACT grammatical form/case
      In Russian: if text says "Иванова Ивана Ивановича" (genitive), extract that exact form
@@ -247,6 +252,7 @@ Extract ALL of the following from the text:
      - Role references: "the Option Holder", "the Option Issuer", "the Seller", "the Buyer", "the Lender"
      - Legal/financial terms: "Call Option", "Put Option", "Exercise Price", "Option Shares", "Option Deed", "Completion", "Affiliates", "Bank account"
      - Document clause definitions: any capitalized term that is DEFINED in the document as a concept (not a company name)
+     - Document names: "Articles", "Articles of Association", "Memorandum", "Call Exercise Notice", "Call and Put Option Deed"
      - Government bodies: "European Commission", "FATF", "MOKAS", "United Nations"
      - Regulations/rules: "Directive (EU) 2018/843", "GDPR", "EBA Guidelines", "LCIA Rules", "ICC Rules"
      - Countries/areas: "BVI", "European Economic Area"
@@ -594,6 +600,14 @@ _ORG_BLACKLIST_EXACT = {
     "the shareholder", "the subscriber", "the investor",
     "the creditor", "the debtor", "the guarantor",
     "lcia rules", "icc rules", "uncitral rules",
+    # Legal/financial terms and document names
+    "articles", "articles of association", "memorandum",
+    "call exercise notice", "put exercise notice",
+    "call and put option deed", "option deed",
+    "share transfer", "share certificate",
+    "deed of adherence", "deed of assignment",
+    "shareholders agreement", "shareholder agreement",
+    "subscription agreement", "escrow agreement",
 }
 
 # Patterns that indicate an org entry is actually a defined term / role reference
@@ -601,7 +615,11 @@ _ORG_BLACKLIST_PATTERNS = [
     re.compile(r'^the\s+(?:option|call|put|exercise|completion|share)', re.IGNORECASE),
     re.compile(r'^the\s+board\b', re.IGNORECASE),
     re.compile(r'^board\s+of\s+directors', re.IGNORECASE),
-    re.compile(r'^the\s+\w+\s+of\s+\[-?\]', re.IGNORECASE),  # "The Board of Directors of [-]"
+    re.compile(r'of\s+\[-?\]\s*$', re.IGNORECASE),  # anything ending with "of [-]" or "of []"
+    # Document/deed names: "X Option Deed", "X Exercise Notice"
+    re.compile(r'(?:option|exercise|transfer)\s+(?:deed|notice|agreement)$', re.IGNORECASE),
+    # "Call and Put ..." style compound document names
+    re.compile(r'^(?:call|put)\s+and\s+(?:call|put)\s+', re.IGNORECASE),
 ]
 
 
@@ -622,6 +640,31 @@ def filter_false_positive_orgs(orgs):
         filtered.append(org)
     if removed:
         print(f"[FILTER] Removed {len(removed)} false-positive orgs: {removed}", flush=True)
+    return filtered
+
+
+# --- Person false-positive filter ---
+# Regex to detect company-name suffixes at the end of a string.
+# If a "person" ends with Ltd, Limited, Inc, Corp, etc., it's a company, not a person.
+_COMPANY_SUFFIX_PATTERN = re.compile(
+    r'\b(?:ltd\.?|limited|llc|inc\.?|corp\.?|corporation|gmbh|s\.?a\.?|s\.?r\.?l\.?|'
+    r'plc|lp|llp|co\.?\s*,?\s*ltd\.?|co\.?\s*,?\s*limited|'
+    r'ооо|зао|оао|пао|ао)\s*\.?\s*$',
+    re.IGNORECASE
+)
+
+
+def filter_false_positive_persons(persons):
+    """Remove entries that are clearly company names (ending in Ltd, Inc, etc.)."""
+    filtered = []
+    removed = []
+    for person in persons:
+        if _COMPANY_SUFFIX_PATTERN.search(person.strip()):
+            removed.append(person)
+            continue
+        filtered.append(person)
+    if removed:
+        print(f"[FILTER] Removed {len(removed)} false-positive persons (company names): {removed}", flush=True)
     return filtered
 
 
@@ -949,6 +992,7 @@ def anonymize_document(pages, system_prompt=None, user_prompt=None):
     custom_entities = validate_entities(custom_entities, full_text_lower, "custom_entities")
 
     # ---- FALSE-POSITIVE FILTERING: remove common misclassifications ----
+    all_persons = filter_false_positive_persons(all_persons)
     all_orgs = filter_false_positive_orgs(all_orgs)
     all_dates = filter_false_positive_dates(all_dates)
     all_emails = filter_false_positive_emails(all_emails)
