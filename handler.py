@@ -116,13 +116,19 @@ Extract the following from the text:
    - Extract ALL variants/transliterations of the same person
 
 2. ORGANISATIONS — actual registered business entity names ONLY
-   ✓ EXTRACT: "Altus Citadel Corporate Services Limited", "ООО Ромашка"
+   An organisation MUST be a specific, named, registered business entity (a company, LLC, partnership, etc.)
+   It MUST have a proper name — typically ending in Ltd, Limited, LLC, Inc, Corp, GmbH, S.A., etc.
+   ✓ EXTRACT: "Altus Citadel Corporate Services Limited", "ООО Ромашка", "PROSPERITY CHAIN TECHNOLOGY CO., LIMITED"
    ✗ NEVER extract these as organisations:
      - Generic terms: "the Company", "Company", "Board of Directors", "the Board"
+     - Role references: "the Option Holder", "the Option Issuer", "the Seller", "the Buyer", "the Lender"
+     - Legal/financial terms: "Call Option", "Put Option", "Exercise Price", "Option Shares", "Option Deed", "Completion", "Affiliates", "Bank account"
+     - Document clause definitions: any capitalized term that is DEFINED in the document as a concept (not a company name)
      - Government bodies: "European Commission", "FATF", "MOKAS", "United Nations"
-     - Regulations: "Directive (EU) 2018/843", "GDPR", "EBA Guidelines"
+     - Regulations/rules: "Directive (EU) 2018/843", "GDPR", "EBA Guidelines", "LCIA Rules", "ICC Rules"
      - Countries/areas: "BVI", "European Economic Area"
      - Indices/reports: "Basel AML Index"
+   CRITICAL: If the text defines a term with a capital letter (e.g., "Call Option" means..., "the Company" means...), that is a DEFINED TERM, NOT an organisation. Do NOT extract it.
 
 Output ONLY valid JSON with no explanation. Do not wrap in markdown code blocks.
 
@@ -137,14 +143,20 @@ You MUST extract entities in ALL languages and scripts, including but not limite
 
 Extract the following from the text:
 
-1. DATES — specific calendar dates ONLY (must reference a specific day)
-   ✓ EXTRACT: "01/09/2015", "24th of July, 2015", "1 January 2020"
+1. DATES — specific, concrete calendar dates ONLY (must identify a SPECIFIC day on a calendar)
+   ✓ EXTRACT: "01/09/2015", "24th of July, 2015", "1 January 2020", "20 December 2018"
    ✗ NEVER extract these as dates:
-     - Time durations: "fourteen days", "six months", "ten days", "twenty-one days", "3 months", "1 year", "two weeks"
+     - Time durations: "fourteen days", "six months", "ten days", "twenty-one days", "3 months", "1 year", "two weeks", "no later than 10 days as from the request"
      - Bare years: "2014" alone is NOT a date
      - Quarter references: "Q2 2024"
      - Section/article numbers: "2.2.11", "3.1.5"
-   A date MUST contain at least a day+month OR a full date format (DD/MM/YYYY). Durations like "X days/months/years" are NEVER dates.
+     - Times of day (without a date): "11.00 a.m.", "11:00 a.m.", "2:30 p.m." — these are TIMES, not dates
+     - Template placeholders with blanks: "DATED this _____", "this ____ day of", "the day and year first above written" — these have NO specific date
+     - Placeholder references in brackets: "[Completion Date]", "[Date]", "[insert date]" — these are placeholders, NOT dates
+     - Relative date descriptions: "the date of expiry of the Exercise Period", "1st anniversary of this Deed", "a date falling 5 Business Days after" — these DESCRIBE a concept, they are NOT specific dates
+     - Descriptive clauses about dates: "date that the respective obligations...has terminated" — this is a legal definition, NOT a date
+     - Complex temporal phrases: "11:00 a.m. (UTC time) upon a date falling 5 (five) Business Days after" — this is a calculation rule, NOT a date
+   CRITICAL RULE: A date MUST be a SPECIFIC point in time that you could mark on a calendar (e.g., "20 December 2018"). If you cannot identify the exact day, month, or year, do NOT extract it.
 
 2. ADDRESSES — physical street/postal addresses in any language
    ✓ EXTRACT: "Mome Kapora 12, apartment 11, 1100 Belgrade", "191 ATHALASSIS AVE."
@@ -178,14 +190,18 @@ Extract the following from the text:
 
 2. REGISTRATION IDS — company registration numbers, tax IDs
    ✓ EXTRACT: "H.E.107777", "HE317807", "Company No. 12345678"
+   ✗ NEVER extract template placeholders like "Company Number: [ - ]" or "Company No. [____]" — these contain NO actual number
 
-3. BANK ACCOUNTS — IBAN numbers, bank account numbers, SWIFT/BIC codes
+3. BANK ACCOUNTS — actual IBAN numbers, bank account numbers, SWIFT/BIC codes
    ✓ EXTRACT: "CY17 0020 0128 0000 0012 0052 7600", "BCYPCY2N"
+   ✗ NEVER extract template placeholders or instructions: "[insert details of the bank account]", "[bank account number]" — these are NOT actual bank accounts
 
 4. EMAILS — email addresses ONLY (MUST contain an @ symbol)
    ✓ EXTRACT: "john@example.com", "info@company.com"
    ✗ NEVER extract the bare word "email" or "Email" — only extract actual email addresses with @ symbol
+   ✗ NEVER extract descriptions about email: "e-mail designated by the Option Holder" is NOT an email address
    ✗ NEVER extract URLs or domain names: "www.example.com" is NOT an email
+   CRITICAL: An email MUST contain the @ character. If there is no @, it is NOT an email.
 
 5. PASSPORTS — passport numbers, national ID numbers, travel document numbers
    ✓ EXTRACT: "N1234567", "C12345678"
@@ -223,22 +239,34 @@ Extract ALL of the following from the text:
    - Extract ALL variants/transliterations of the same person
 
 2. ORGANISATIONS — actual registered business entity names ONLY
-   ✓ EXTRACT: "Altus Citadel Corporate Services Limited", "ООО Ромашка"
+   An organisation MUST be a specific, named, registered business entity (a company, LLC, partnership, etc.)
+   It MUST have a proper name — typically ending in Ltd, Limited, LLC, Inc, Corp, GmbH, S.A., etc.
+   ✓ EXTRACT: "Altus Citadel Corporate Services Limited", "ООО Ромашка", "PROSPERITY CHAIN TECHNOLOGY CO., LIMITED"
    ✗ NEVER extract these as organisations:
      - Generic terms: "the Company", "Company", "Board of Directors", "the Board"
+     - Role references: "the Option Holder", "the Option Issuer", "the Seller", "the Buyer", "the Lender"
+     - Legal/financial terms: "Call Option", "Put Option", "Exercise Price", "Option Shares", "Option Deed", "Completion", "Affiliates", "Bank account"
+     - Document clause definitions: any capitalized term that is DEFINED in the document as a concept (not a company name)
      - Government bodies: "European Commission", "FATF", "MOKAS", "United Nations"
-     - Regulations: "Directive (EU) 2018/843", "GDPR", "EBA Guidelines"
+     - Regulations/rules: "Directive (EU) 2018/843", "GDPR", "EBA Guidelines", "LCIA Rules", "ICC Rules"
      - Countries/areas: "BVI", "European Economic Area"
      - Indices/reports: "Basel AML Index"
+   CRITICAL: If the text defines a term with a capital letter (e.g., "Call Option" means..., "the Company" means...), that is a DEFINED TERM, NOT an organisation. Do NOT extract it.
 
-3. DATES — specific calendar dates ONLY (must reference a specific day)
-   ✓ EXTRACT: "01/09/2015", "24th of July, 2015", "1 January 2020"
+3. DATES — specific, concrete calendar dates ONLY (must identify a SPECIFIC day on a calendar)
+   ✓ EXTRACT: "01/09/2015", "24th of July, 2015", "1 January 2020", "20 December 2018"
    ✗ NEVER extract these as dates:
-     - Time durations: "fourteen days", "six months", "ten days", "twenty-one days", "3 months", "1 year", "two weeks"
+     - Time durations: "fourteen days", "six months", "ten days", "twenty-one days", "3 months", "1 year", "two weeks", "no later than 10 days as from the request"
      - Bare years: "2014" alone is NOT a date
      - Quarter references: "Q2 2024"
      - Section/article numbers: "2.2.11", "3.1.5"
-   A date MUST contain at least a day+month OR a full date format (DD/MM/YYYY). Durations like "X days/months/years" are NEVER dates.
+     - Times of day (without a date): "11.00 a.m.", "11:00 a.m.", "2:30 p.m." — these are TIMES, not dates
+     - Template placeholders with blanks: "DATED this _____", "this ____ day of", "the day and year first above written"
+     - Placeholder references in brackets: "[Completion Date]", "[Date]", "[insert date]"
+     - Relative date descriptions: "the date of expiry of the Exercise Period", "1st anniversary of this Deed", "a date falling 5 Business Days after"
+     - Descriptive clauses about dates: "date that the respective obligations...has terminated"
+     - Complex temporal phrases: "11:00 a.m. (UTC time) upon a date falling 5 (five) Business Days after"
+   CRITICAL RULE: A date MUST be a SPECIFIC point in time that you could mark on a calendar. If you cannot identify the exact day, month, or year, do NOT extract it.
 
 4. ADDRESSES — physical street/postal addresses in any language
    ✓ EXTRACT: "Mome Kapora 12, apartment 11, 1100 Belgrade", "191 ATHALASSIS AVE."
@@ -259,14 +287,18 @@ Extract ALL of the following from the text:
 
 6. REGISTRATION IDS — company registration numbers, tax IDs
    ✓ EXTRACT: "H.E.107777", "HE317807", "Company No. 12345678"
+   ✗ NEVER extract template placeholders like "Company Number: [ - ]" or "Company No. [____]"
 
-7. BANK ACCOUNTS — IBAN numbers, bank account numbers, SWIFT/BIC codes
+7. BANK ACCOUNTS — actual IBAN numbers, bank account numbers, SWIFT/BIC codes
    ✓ EXTRACT: "CY17 0020 0128 0000 0012 0052 7600", "BCYPCY2N"
+   ✗ NEVER extract template placeholders or instructions: "[insert details of the bank account]", "[bank account number]"
 
 8. EMAILS — email addresses ONLY (MUST contain an @ symbol)
    ✓ EXTRACT: "john@example.com", "info@company.com"
    ✗ NEVER extract the bare word "email" or "Email" — only extract actual email addresses with @ symbol
+   ✗ NEVER extract descriptions about email: "e-mail designated by the Option Holder" is NOT an email address
    ✗ NEVER extract URLs or domain names: "www.example.com" is NOT an email
+   CRITICAL: An email MUST contain the @ character. If there is no @, it is NOT an email.
 
 9. PASSPORTS — passport numbers, national ID numbers, travel document numbers
    ✓ EXTRACT: "N1234567", "C12345678"
@@ -543,6 +575,156 @@ def validate_entities(entities, full_text_lower, entity_type):
 
 
 # ===============================
+# POST-EXTRACTION FALSE-POSITIVE FILTERS
+# ===============================
+
+# --- Organisation false-positive filter ---
+# Common legal/financial defined terms that are NOT company names.
+# These are matched case-insensitively.
+_ORG_BLACKLIST_EXACT = {
+    "the company", "company", "affiliates", "affiliate",
+    "bank account", "call option", "put option",
+    "exercise price", "option shares", "option deed",
+    "completion", "the board", "board of directors",
+    "the board of directors", "the option holder",
+    "the option issuer", "the seller", "the buyer",
+    "the lender", "the borrower", "the landlord", "the tenant",
+    "the grantor", "the grantee", "the licensor", "the licensee",
+    "the agent", "the trustee", "the beneficiary",
+    "the shareholder", "the subscriber", "the investor",
+    "the creditor", "the debtor", "the guarantor",
+    "lcia rules", "icc rules", "uncitral rules",
+}
+
+# Patterns that indicate an org entry is actually a defined term / role reference
+_ORG_BLACKLIST_PATTERNS = [
+    re.compile(r'^the\s+(?:option|call|put|exercise|completion|share)', re.IGNORECASE),
+    re.compile(r'^the\s+board\b', re.IGNORECASE),
+    re.compile(r'^board\s+of\s+directors', re.IGNORECASE),
+    re.compile(r'^the\s+\w+\s+of\s+\[-?\]', re.IGNORECASE),  # "The Board of Directors of [-]"
+]
+
+
+def filter_false_positive_orgs(orgs):
+    """Remove generic legal/financial terms from the organisations list."""
+    filtered = []
+    removed = []
+    for org in orgs:
+        org_lower = org.strip().lower()
+        # Exact blacklist match
+        if org_lower in _ORG_BLACKLIST_EXACT:
+            removed.append(org)
+            continue
+        # Pattern-based match
+        if any(p.search(org) for p in _ORG_BLACKLIST_PATTERNS):
+            removed.append(org)
+            continue
+        filtered.append(org)
+    if removed:
+        print(f"[FILTER] Removed {len(removed)} false-positive orgs: {removed}", flush=True)
+    return filtered
+
+
+# --- Date false-positive filter ---
+_DATE_BLACKLIST_PATTERNS = [
+    # Template placeholders with blanks / underscores
+    re.compile(r'___|\[.*?\]', re.IGNORECASE),
+    # Times of day without a date component (e.g., "11.00 a.m.", "2:30 p.m.")
+    re.compile(r'^\d{1,2}[.:]+\d{2}\s*(?:a\.?m\.?|p\.?m\.?)$', re.IGNORECASE),
+    # Relative descriptions that are NOT specific dates
+    re.compile(r'anniversary|expiry|exercise\s+period|business\s+days?\s+after', re.IGNORECASE),
+    # Legal boilerplate date references
+    re.compile(r'the\s+day\s+and\s+year\s+first\s+above', re.IGNORECASE),
+    re.compile(r'day\s+and\s+year\s+first', re.IGNORECASE),
+    # Descriptive date clauses (too long to be an actual date)
+    re.compile(r'date\s+that\s+the\s+respective', re.IGNORECASE),
+    re.compile(r'date\s+of\s+expiry', re.IGNORECASE),
+    # "DATED this _____" style
+    re.compile(r'^dated\s+this', re.IGNORECASE),
+    # "this ____ day of" style
+    re.compile(r'^this\s+.*day\s+of', re.IGNORECASE),
+    # "no later than X days" — duration, not a date
+    re.compile(r'no\s+later\s+than\s+\d+\s+days', re.IGNORECASE),
+    # Complex temporal phrases that describe a calculation
+    re.compile(r'upon\s+a\s+date\s+falling', re.IGNORECASE),
+    # HTML tags (e.g., <sup>st</sup>)
+    re.compile(r'<\s*sup\s*>', re.IGNORECASE),
+]
+
+
+def filter_false_positive_dates(dates):
+    """Remove template placeholders and descriptive references from dates list."""
+    filtered = []
+    removed = []
+    for date in dates:
+        if any(p.search(date) for p in _DATE_BLACKLIST_PATTERNS):
+            removed.append(date)
+            continue
+        filtered.append(date)
+    if removed:
+        print(f"[FILTER] Removed {len(removed)} false-positive dates: {removed}", flush=True)
+    return filtered
+
+
+# --- Email false-positive filter ---
+def filter_false_positive_emails(emails):
+    """Remove entries that don't contain an @ symbol (not real emails)."""
+    filtered = []
+    removed = []
+    for email in emails:
+        if '@' not in email:
+            removed.append(email)
+            continue
+        filtered.append(email)
+    if removed:
+        print(f"[FILTER] Removed {len(removed)} false-positive emails: {removed}", flush=True)
+    return filtered
+
+
+# --- Bank account false-positive filter ---
+_BANK_BLACKLIST_PATTERNS = [
+    re.compile(r'\[.*?insert.*?\]', re.IGNORECASE),  # "[insert details of the bank account]"
+    re.compile(r'\[.*?bank.*?\]', re.IGNORECASE),  # "[bank account number]"
+    re.compile(r'^bank\s+account$', re.IGNORECASE),  # bare "bank account"
+]
+
+
+def filter_false_positive_bank_accounts(bank_accounts):
+    """Remove template placeholders from bank accounts list."""
+    filtered = []
+    removed = []
+    for ba in bank_accounts:
+        if any(p.search(ba) for p in _BANK_BLACKLIST_PATTERNS):
+            removed.append(ba)
+            continue
+        filtered.append(ba)
+    if removed:
+        print(f"[FILTER] Removed {len(removed)} false-positive bank_accounts: {removed}", flush=True)
+    return filtered
+
+
+# --- Registration ID false-positive filter ---
+_REG_ID_BLACKLIST_PATTERNS = [
+    re.compile(r'\[\s*-\s*\]', re.IGNORECASE),  # "[ - ]"
+    re.compile(r'\[\s*_+\s*\]', re.IGNORECASE),  # "[____]"
+]
+
+
+def filter_false_positive_reg_ids(reg_ids):
+    """Remove template placeholders from registration IDs list."""
+    filtered = []
+    removed = []
+    for rid in reg_ids:
+        if any(p.search(rid) for p in _REG_ID_BLACKLIST_PATTERNS):
+            removed.append(rid)
+            continue
+        filtered.append(rid)
+    if removed:
+        print(f"[FILTER] Removed {len(removed)} false-positive reg_ids: {removed}", flush=True)
+    return filtered
+
+
+# ===============================
 # REGEX BACKUP DETECTION
 # ===============================
 def regex_backup_detection(full_text, existing_reg_ids=None):
@@ -765,6 +947,19 @@ def anonymize_document(pages, system_prompt=None, user_prompt=None):
     all_emails = validate_entities(all_emails, full_text_lower, "emails")
     all_passports = validate_entities(all_passports, full_text_lower, "passports")
     custom_entities = validate_entities(custom_entities, full_text_lower, "custom_entities")
+
+    # ---- FALSE-POSITIVE FILTERING: remove common misclassifications ----
+    all_orgs = filter_false_positive_orgs(all_orgs)
+    all_dates = filter_false_positive_dates(all_dates)
+    all_emails = filter_false_positive_emails(all_emails)
+    all_bank_accounts = filter_false_positive_bank_accounts(all_bank_accounts)
+    all_reg_ids = filter_false_positive_reg_ids(all_reg_ids)
+
+    print(f"[LOG] After false-positive filtering: {len(all_persons)} persons, {len(all_orgs)} orgs, "
+          f"{len(all_dates)} dates, {len(all_addresses)} addresses, "
+          f"{len(all_phones)} phones, {len(all_reg_ids)} reg_ids, "
+          f"{len(all_bank_accounts)} bank_accounts, {len(all_emails)} emails, "
+          f"{len(all_passports)} passports, {len(custom_entities)} custom_entities", flush=True)
 
     print(f"[LOG] After validation: {len(all_persons)} persons, {len(all_orgs)} orgs, "
           f"{len(all_dates)} dates, {len(all_addresses)} addresses, "
