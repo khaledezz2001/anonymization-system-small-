@@ -619,6 +619,13 @@ _ORG_BLACKLIST_EXACT = {
     "settlement date", "termination date", "expiry date",
     "the parties", "the party", "the issuer", "the holder",
     "[-]", "[]", "[ ]", "[---]",
+    # Legal roles (single words or short phrases)
+    "pledgee", "pledgor", "the pledgee", "the pledgor",
+    "shares", "the shares", "share", "the bank",
+    "landlord", "landlords", "tenant", "tenants",
+    "mortgagee", "mortgagor", "assignee", "assignor",
+    "surety", "guarantor", "indemnifier",
+    "the vendor", "the purchaser", "vendor", "purchaser",
 }
 
 # Patterns that indicate an org entry is actually a defined term / role reference
@@ -635,6 +642,10 @@ _ORG_BLACKLIST_PATTERNS = [
     re.compile(r'^\[\s*[-_]*\s*\]$'),
     # Entries that are ONLY generic role/term words (no proper noun / business suffix)
     re.compile(r'^(?:the\s+)?(?:option|exercise|call|put|completion|settlement|valuation|closing|effective|maturity|termination|expiry)\s+(?:holder|issuer|period|date|price|notice|shares|deed|agent|day|days)$', re.IGNORECASE),
+    # Government bodies: "District Court of ...", "Supreme Court of ..."
+    re.compile(r'^(?:district|supreme|high|magistrate|county)\s+court\b', re.IGNORECASE),
+    # Entries that are too short to be a real company name (1-2 characters)
+    re.compile(r'^.{1,2}$'),
 ]
 
 
@@ -715,6 +726,12 @@ _DATE_BLACKLIST_PATTERNS = [
     re.compile(r'(?:has\s+been|is|was)\s+served\s+pursuant', re.IGNORECASE),
     # Any "date" reference that doesn't contain an actual number — it's a description
     re.compile(r'^(?:the\s+)?date\s+(?:of|hereof|thereof|hereunder)\b', re.IGNORECASE),
+    # "date first written above" and similar boilerplate
+    re.compile(r'date\s+first\s+(?:written|stated|mentioned|set)', re.IGNORECASE),
+    # Duration phrases: "X hours/days/months after ..."
+    re.compile(r'\d+\s+(?:hours?|days?|weeks?|months?|years?)\s+(?:after|before|from|following)', re.IGNORECASE),
+    # Very short number-slash-number without year (e.g., "10/2" which is part of an address)
+    re.compile(r'^\d{1,2}/\d{1,2}$'),
 ]
 
 
@@ -775,13 +792,38 @@ _REG_ID_BLACKLIST_PATTERNS = [
     re.compile(r'\[\s*_+\s*\]', re.IGNORECASE),  # "[____]"
 ]
 
+# Regex to detect company-name suffixes in registration IDs
+# (company names like "FBME Bank Ltd" should not be tagged as reg IDs)
+_REG_ID_COMPANY_SUFFIX = re.compile(
+    r'\b(?:ltd\.?|limited|llc|inc\.?|corp\.?|corporation|gmbh|s\.?a\.?|s\.?r\.?l\.?|'
+    r'plc|lp|llp|co\.?\s*,?\s*ltd\.?|co\.?\s*,?\s*limited|'
+    r'ооо|зао|оао|пао|ао|λτδ)\s*\.?\s*$',
+    re.IGNORECASE
+)
+
+# Bare label patterns — the label text without an actual number
+_REG_ID_LABEL_ONLY = re.compile(
+    r'^(?:company|registration|tax|vat|tin)\s+(?:number|no\.?|id|#)\s*$',
+    re.IGNORECASE
+)
+
 
 def filter_false_positive_reg_ids(reg_ids):
-    """Remove template placeholders from registration IDs list."""
+    """Remove template placeholders, company names, and bare labels from registration IDs."""
     filtered = []
     removed = []
     for rid in reg_ids:
-        if any(p.search(rid) for p in _REG_ID_BLACKLIST_PATTERNS):
+        rid_stripped = rid.strip()
+        # Pattern blacklist
+        if any(p.search(rid_stripped) for p in _REG_ID_BLACKLIST_PATTERNS):
+            removed.append(rid)
+            continue
+        # Company name ending with Ltd, Limited, etc. — not a reg ID
+        if _REG_ID_COMPANY_SUFFIX.search(rid_stripped):
+            removed.append(rid)
+            continue
+        # Bare label without an actual number (e.g., "Company Number")
+        if _REG_ID_LABEL_ONLY.search(rid_stripped):
             removed.append(rid)
             continue
         filtered.append(rid)
@@ -800,17 +842,89 @@ _ADDRESS_BLACKLIST_PATTERNS = [
     re.compile(r'\[.*?insert.*?\]', re.IGNORECASE),
     # "Address: ....." (placeholder with dots)
     re.compile(r'^address\s*:\s*\.{3,}$', re.IGNORECASE),
+    # Markdown formatting artifacts: "**COMPANY NAME**"
+    re.compile(r'^\*{1,2}[^*]+\*{1,2}$'),
 ]
+
+# Company suffix pattern used to detect company names misclassified as addresses
+# (includes Greek ΛΤΔ = Ltd)
+_ADDR_COMPANY_SUFFIX = re.compile(
+    r'\b(?:ltd\.?|limited|llc|inc\.?|corp\.?|corporation|gmbh|s\.?a\.?|s\.?r\.?l\.?|'
+    r'plc|lp|llp|co\.?\s*,?\s*ltd\.?|co\.?\s*,?\s*limited|'
+    r'ооо|зао|оао|пао|ао|λτδ)\s*\.?\s*$',
+    re.IGNORECASE
+)
+
+# Keywords that strongly indicate something IS a real address
+_ADDRESS_KEYWORDS = re.compile(
+    r'(?:'
+    r'\b(?:street|str\.|avenue|ave\.|road|rd\.|building|floor|flat|office|'
+    r'apartment|apt\.|suite|p\.?o\.?\s*box|block|tower|plaza|square|'
+    r'boulevard|blvd|drive|lane|court|crescent|terrace|place|way|highway|'
+    r'embankment|emb\.|miles|postal|zip)\b'
+    r'|\b\d{4,}\b'  # postal codes (4+ digit numbers)
+    r'|,\s*\w'      # comma-separated components (typical of addresses)
+    r')',
+    re.IGNORECASE
+)
+
+# Words that suggest a company/organisation name rather than an address
+_NON_ADDRESS_KEYWORDS = re.compile(
+    r'\b(?:investments?|holdings?|management|corporate|services?|consulting|'
+    r'solutions?|enterprises?|technologies?|properties|real\s+estate|'
+    r'bank|group|partners|advisors?|audit|financial|capital|ventures?)\b',
+    re.IGNORECASE
+)
 
 
 def filter_false_positive_addresses(addresses):
-    """Remove entries that are clearly not physical addresses."""
+    """Remove entries that are clearly not physical addresses.
+
+    Catches:
+    - Blacklisted patterns (board of directors, placeholders, markdown)
+    - Company names ending in Ltd/Limited/etc. without address components
+    - Short entries (1-3 words) with no numbers and no address keywords
+      (catches person names like 'CARL MACKINDER' misclassified as addresses)
+    - Entries with company/business keywords but no address keywords
+    - Entries starting with 'c/o' that contain only a company name
+    """
     filtered = []
     removed = []
     for addr in addresses:
+        addr_stripped = addr.strip().strip('*')  # also strip markdown bold markers
+
+        # 1. Pattern blacklist
         if any(p.search(addr) for p in _ADDRESS_BLACKLIST_PATTERNS):
             removed.append(addr)
             continue
+
+        # 2. Company suffix (Ltd, Limited, etc.) WITHOUT address keywords
+        #    e.g., "Services Ltd" or "ΔΗΜΗΤΡΑ ΕΠΕΝΔΥΤΙΚΗ ΔΗΜΟΣΙΑ ΛΤΔ" → not an address
+        #    but "FBME Bank Ltd, J&P Building, 90 Archbishop Makarios..." → IS an address
+        if _ADDR_COMPANY_SUFFIX.search(addr_stripped) and not _ADDRESS_KEYWORDS.search(addr_stripped):
+            removed.append(addr)
+            continue
+
+        # 3. Short entries (1-3 words) without numbers or address keywords
+        #    → likely a person name or company name fragment
+        words = addr_stripped.split()
+        has_digits = bool(re.search(r'\d', addr_stripped))
+        has_addr_kw = bool(_ADDRESS_KEYWORDS.search(addr_stripped))
+        if len(words) <= 3 and not has_digits and not has_addr_kw:
+            removed.append(addr)
+            continue
+
+        # 4. Entries with business/company keywords but NO address keywords
+        #    e.g., "Demetra Real Estate", "Altus Citadel Corporate", "DEMETRA INVESTMENTS"
+        if _NON_ADDRESS_KEYWORDS.search(addr_stripped) and not has_addr_kw:
+            removed.append(addr)
+            continue
+
+        # 5. "c/o <company>" without a real address following it
+        if re.match(r'^c/o\s+', addr_stripped, re.IGNORECASE) and not has_addr_kw and not has_digits:
+            removed.append(addr)
+            continue
+
         filtered.append(addr)
     if removed:
         print(f"[FILTER] Removed {len(removed)} false-positive addresses: {removed}", flush=True)
@@ -1049,6 +1163,7 @@ def anonymize_document(pages, system_prompt=None, user_prompt=None):
     all_emails = filter_false_positive_emails(all_emails)
     all_bank_accounts = filter_false_positive_bank_accounts(all_bank_accounts)
     all_reg_ids = filter_false_positive_reg_ids(all_reg_ids)
+    all_phones = filter_false_positive_phones(all_phones)
 
     print(f"[LOG] After false-positive filtering: {len(all_persons)} persons, {len(all_orgs)} orgs, "
           f"{len(all_dates)} dates, {len(all_addresses)} addresses, "
