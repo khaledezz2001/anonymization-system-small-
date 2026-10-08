@@ -764,6 +764,30 @@ def filter_false_positive_emails(emails):
     return filtered
 
 
+# --- Phone false-positive filter ---
+_PHONE_BLACKLIST_PATTERNS = [
+    # Formatted round numbers that are likely monetary amounts (e.g., "8 000 000", "1 000 000")
+    re.compile(r'^\d{1,3}(?:\s\d{3}){1,3}$'),
+    # Pure digits that are exactly a round number (e.g., "8000000", "1000000")
+    re.compile(r'^[1-9]0{5,}$'),
+]
+
+
+def filter_false_positive_phones(phones):
+    """Remove entries that are likely monetary amounts or not real phone numbers."""
+    filtered = []
+    removed = []
+    for phone in phones:
+        phone_stripped = phone.strip()
+        if any(p.search(phone_stripped) for p in _PHONE_BLACKLIST_PATTERNS):
+            removed.append(phone)
+            continue
+        filtered.append(phone)
+    if removed:
+        print(f"[FILTER] Removed {len(removed)} false-positive phones: {removed}", flush=True)
+    return filtered
+
+
 # --- Bank account false-positive filter ---
 _BANK_BLACKLIST_PATTERNS = [
     re.compile(r'\[.*?insert.*?\]', re.IGNORECASE),  # "[insert details of the bank account]"
