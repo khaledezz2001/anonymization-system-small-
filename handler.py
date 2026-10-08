@@ -608,6 +608,17 @@ _ORG_BLACKLIST_EXACT = {
     "deed of adherence", "deed of assignment",
     "shareholders agreement", "shareholder agreement",
     "subscription agreement", "escrow agreement",
+    # Defined terms / role references that are NOT company names
+    "option holder", "option issuer", "exercise period",
+    "call option holder", "put option holder",
+    "call option issuer", "put option issuer",
+    "exercise date", "exercise notice", "completion date",
+    "business day", "business days", "valuation date",
+    "option period", "lock-up period", "notice period",
+    "effective date", "closing date", "maturity date",
+    "settlement date", "termination date", "expiry date",
+    "the parties", "the party", "the issuer", "the holder",
+    "[-]", "[]", "[ ]", "[---]",
 }
 
 # Patterns that indicate an org entry is actually a defined term / role reference
@@ -620,6 +631,10 @@ _ORG_BLACKLIST_PATTERNS = [
     re.compile(r'(?:option|exercise|transfer)\s+(?:deed|notice|agreement)$', re.IGNORECASE),
     # "Call and Put ..." style compound document names
     re.compile(r'^(?:call|put)\s+and\s+(?:call|put)\s+', re.IGNORECASE),
+    # Bracket-only placeholders: "[-]", "[ - ]", "[---]", etc.
+    re.compile(r'^\[\s*[-_]*\s*\]$'),
+    # Entries that are ONLY generic role/term words (no proper noun / business suffix)
+    re.compile(r'^(?:the\s+)?(?:option|exercise|call|put|completion|settlement|valuation|closing|effective|maturity|termination|expiry)\s+(?:holder|issuer|period|date|price|notice|shares|deed|agent|day|days)$', re.IGNORECASE),
 ]
 
 
@@ -692,6 +707,14 @@ _DATE_BLACKLIST_PATTERNS = [
     re.compile(r'upon\s+a\s+date\s+falling', re.IGNORECASE),
     # HTML tags (e.g., <sup>st</sup>)
     re.compile(r'<\s*sup\s*>', re.IGNORECASE),
+    # Descriptive date references: "date of this Deed", "the date hereof", etc.
+    re.compile(r'^(?:the\s+)?date\s+of\s+(?:this|the|a|an)\s+', re.IGNORECASE),
+    re.compile(r'^(?:the\s+)?date\s+hereof$', re.IGNORECASE),
+    # Long phrases that contain "notice" or "served" — legal clauses, not dates
+    re.compile(r'notice.*(?:has\s+been|is|was)\s+(?:served|given|delivered|issued)', re.IGNORECASE),
+    re.compile(r'(?:has\s+been|is|was)\s+served\s+pursuant', re.IGNORECASE),
+    # Any "date" reference that doesn't contain an actual number — it's a description
+    re.compile(r'^(?:the\s+)?date\s+(?:of|hereof|thereof|hereunder)\b', re.IGNORECASE),
 ]
 
 
@@ -764,6 +787,33 @@ def filter_false_positive_reg_ids(reg_ids):
         filtered.append(rid)
     if removed:
         print(f"[FILTER] Removed {len(removed)} false-positive reg_ids: {removed}", flush=True)
+    return filtered
+
+
+# --- Address false-positive filter ---
+_ADDRESS_BLACKLIST_PATTERNS = [
+    # "The Board of Directors of [-]" and similar legal role references
+    re.compile(r'board\s+of\s+directors', re.IGNORECASE),
+    # Bracket-only placeholders: "[-]", "[ - ]", etc.
+    re.compile(r'^\[\s*[-_]*\s*\]$'),
+    # Template placeholders
+    re.compile(r'\[.*?insert.*?\]', re.IGNORECASE),
+    # "Address: ....." (placeholder with dots)
+    re.compile(r'^address\s*:\s*\.{3,}$', re.IGNORECASE),
+]
+
+
+def filter_false_positive_addresses(addresses):
+    """Remove entries that are clearly not physical addresses."""
+    filtered = []
+    removed = []
+    for addr in addresses:
+        if any(p.search(addr) for p in _ADDRESS_BLACKLIST_PATTERNS):
+            removed.append(addr)
+            continue
+        filtered.append(addr)
+    if removed:
+        print(f"[FILTER] Removed {len(removed)} false-positive addresses: {removed}", flush=True)
     return filtered
 
 
@@ -995,6 +1045,7 @@ def anonymize_document(pages, system_prompt=None, user_prompt=None):
     all_persons = filter_false_positive_persons(all_persons)
     all_orgs = filter_false_positive_orgs(all_orgs)
     all_dates = filter_false_positive_dates(all_dates)
+    all_addresses = filter_false_positive_addresses(all_addresses)
     all_emails = filter_false_positive_emails(all_emails)
     all_bank_accounts = filter_false_positive_bank_accounts(all_bank_accounts)
     all_reg_ids = filter_false_positive_reg_ids(all_reg_ids)
